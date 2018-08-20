@@ -1,0 +1,8 @@
+---
+- hosts: vspheres
+  roles:
+    - vspheres
+
+- hosts: vm
+  roles:
+    - vm
