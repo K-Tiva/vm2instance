@@ -1,0 +1,142 @@
+---
+- name: Uninstall VMware Tools
+  command: vmware-uninstall-tools.pl
+  tags: uninstall-vmware-tools
+
+- name: run uname -r command
+  command: '/bin/uname -r'
+  register: result
+
+- name: install VirtIO
+  command: '/sbin/mkinitrd --with virtio --with virtio_ring --with virtio_blk --with virtio_net --with virtio_pci -v -f /boot/initramfs-{{ result.stdout }}.img {{ result.stdout }}'
+  tags: install-virtio
+
+- name: disable yum repository base
+  ini_file:
+    dest: /etc/yum.repos.d/CentOS-Base.repo
+    section: base
+    option: enabled
+    value: '0'
+  tags: disable-yum-repository
+
+- name: disable yum repository updates
+  ini_file:
+    dest: /etc/yum.repos.d/CentOS-Base.repo
+    section: updates
+    option: enabled
+    value: '0'
+  tags: disable-yum-repository
+
+- name: disable yum repository extras
+  ini_file:
+    dest: /etc/yum.repos.d/CentOS-Base.repo
+    section: extras
+    option: enabled
+    value: '0'
+  tags: disable-yum-repository
+
+- name: install the package
+  yum:
+    name: 'http://172.29.91.249/repos/vm2instance/{{ item }}'
+    state: present
+  with_items:
+    - acpid-1.0.10-2.1.el6.x86_64.rpm
+    - m2crypto-0.20.2-7.el6.x86_64.rpm
+    - python-backports-1.0-5.el6.x86_64.rpm
+    - python-backports-ssl_match_hostname-3.4.0.2-5.el6.noarch.rpm
+    - python-ordereddict-1.1-2.el6.centos.noarch.rpm
+    - python-six-1.9.0-2.el6.noarch.rpm
+    - python-urllib3-1.10.2-3.el6.noarch.rpm
+    - python-chardet-2.2.1-1.el6.noarch.rpm
+    - python-requests-2.6.0-4.el6.noarch.rpm
+    - python-boto-2.34.0-6.el6.noarch.rpm
+    - libyaml-0.1.3-4.el6_6.x86_64.rpm
+    - PyYAML-3.10-3.1.el6.x86_64.rpm
+    - policycoreutils-2.0.83-30.1.el6_8.x86_64.rpm
+    - audit-libs-python-2.1.3-3.el6.x86_64.rpm
+    - libsemanage-2.0.43-5.1.el6.x86_64.rpm
+    - libsemanage-python-2.0.43-5.1.el6.x86_64.rpm
+    - libcgroup-0.40.rc1-23.el6.x86_64.rpm
+    - setools-libs-3.3.7-4.el6.x86_64.rpm
+    - setools-libs-python-3.3.7-4.el6.x86_64.rpm
+    - policycoreutils-python-2.0.83-30.1.el6_8.x86_64.rpm
+    - python-argparse-1.2.1-2.1.el6.noarch.rpm
+    - python-markdown-2.0.1-4.el6.noarch.rpm
+    - python-pygments-1.1.1-2.el6.noarch.rpm
+    - python-cheetah-2.4.1-1.el6.x86_64.rpm
+    - python-configobj-4.6.0-3.el6.noarch.rpm
+    - python-jsonpointer-1.0-4.el6.noarch.rpm
+    - python-jsonpatch-1.2-4.el6.noarch.rpm
+    - python-prettytable-0.7.2-11.el6.noarch.rpm
+    - cloud-init-0.7.4-2.el6.noarch.rpm
+    - cloud-utils-growpart-0.27-10.el6.x86_64.rpm
+  tags: install-package
+
+- name: configure boot option
+  replace:
+    path: /boot/grub/grub.conf
+    regexp: 'rhgb\ quiet'
+    replace: 'console=tty0 console=ttyS0, 115200n8'
+    backup: yes
+  tags: config-boot-option
+
+- name: configure NOZEROCONF
+  blockinfile:
+    path: /etc/sysconfig/network
+    block: |
+      NOZEROCONF=yes
+  tags: config-nozeroconf
+
+- name: remove 70-persistent-net.rules
+  file:
+    path: /etc/udev/rules.d/70-persistent-net.rules
+    state: absent
+  tags: remove-70-persistent-net.rules
+
+- name: copy ifcfg file
+  copy:
+    src: ifcfg-eth
+    dest: /etc/sysconfig/network-scripts/ifcfg-{{ item }}
+    owner: root
+    group: root
+  with_items: '{{ interfaces }}'
+  tags: config-ifcfg
+
+- name: configure ifcfg file
+  replace:
+    path: /etc/sysconfig/network-scripts/ifcfg-{{ item }}
+    regexp: ethX
+    replace: '{{ item }}'
+  with_items: '{{ interfaces }}'
+  tags: config-ifcfg
+
+- name: configure /etc/device.map
+  replace:
+    path: /boot/grub/device.map
+    regexp: '/dev/sda'
+    replace: '/dev/vda'
+  tags: config-device.map
+
+- name: configure /etc/fstab
+  replace:
+    path: /etc/fstab
+    regexp: '^UUID=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    replace: '/dev/vda1'
+  tags: config-fstab
+
+- name: Replace PostgreSQL client authentication configuration file
+  replace:
+    path: /var/lib/pgsql/9.3/data/pg_hba.conf
+    regexp: '192.168.3.[1-4]2\/32'
+    replace: '192.168.3.0/24 '
+  tags: config-pg_hba.conf
+
+- name: remove ~/.bash_history
+  file:
+    path: /root/.bash_history
+    state: absent
+  tags: remove-bash_history
+
+- name: shutdown Guest VM
+  command: 'shutdown -h now'
+  tags: shutdonw-guestvm
