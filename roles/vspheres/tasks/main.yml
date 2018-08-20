@@ -1,0 +1,33 @@
+---
+- name: Get Guest VM ID
+  shell: vim-cmd vmsvc/getallvms | grep {{ guest }} | awk '{ print $1 }'
+  register: vmid
+  tags: get-vmid
+
+- name: Power-off guest VM
+  command: vim-cmd vmsvc/power.shutdown {{ vmid.stdout }}
+  tags: power-of-vm
+
+- name: Wait 300 seconds for port 22 of Guest VM
+  wait_for:
+    host: '{{ guest_ip }}'
+    port: 22
+    state: stopped
+    delay: 10
+  delegate_to: 127.0.0.1
+
+- name: Create snapshot
+  command: vim-cmd vmsvc/snapshot.create {{ vmid.stdout }} '{{ guest }}_001'
+  tags: create-snapshot
+
+- name: Power-on guest VM
+  command: vim-cmd vmsvc/power.on {{ vmid.stdout }}
+  tags: power-of-vm
+
+- name: Wait 300 seconds for port 22 of Guest VM
+  wait_for:
+    host: '{{ guest_ip }}'
+    port: 22
+    state: started
+    delay: 10
+  delegate_to: 127.0.0.1
